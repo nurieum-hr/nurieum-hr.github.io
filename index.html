@@ -104,7 +104,7 @@ window.addEventListener('message', e => {
     }
     case 'EEUM_AUTH_SAVE': if (d.token) tokSave(String(d.token), d.remember !== false); break;
     case 'EEUM_AUTH_CLEAR': del('hr_tok'); pushLogout(); break;
-    case 'EEUM_AUTH_READY': hideSplash(); break;
+    case 'EEUM_AUTH_READY': hideSplash(); if (d.authenticated) setTimeout(() => askPush(''), 2500); break;
     case 'EEUM_PUSH_LOGIN': hideSplash(); pushLogin(String(d.pushId || ''), String(d.role || '')); break;
   }
 });
@@ -169,24 +169,46 @@ async function osAttach() {
     if (granted() && !OS.User.PushSubscription.optedIn) await OS.User.PushSubscription.optIn();
   } catch (e) {}
 }
-/* 로그인한 사람으로 알림 등록. 아직 허용 전이면 안내창(허용 버튼)을 한 번 보여 줌 */
+/* 로그인한 사람으로 알림 등록 */
 async function pushLogin(id, role) {
   if (!id || !OS_READY) return;
   pid = id; set('hr_pid', id);
+  if (!(IS_IOS && !IS_STANDALONE)) { await loadOS(); await osAttach(); }
+  askPush(role);
+}
+/* 아직 허용 전이면 '업무 알림 받기' 안내창을 보여 줌 (주소 끝에 ?push=1 을 붙이면 언제든 다시 띄움) */
+const FORCE_ASK = new URLSearchParams(location.search).get('push') === '1';
+let asked = false;
+async function askPush(role) {
+  if (asked || !OS_READY) return;
   if (IS_IOS && !IS_STANDALONE) {
-    if (!get('hr_a2off', 0) && !sessionStorage.getItem('hr_a2shown')) {
+    asked = true;
+    if (FORCE_ASK || (!get('hr_a2off', 0) && !sessionStorage.getItem('hr_a2shown'))) {
       try { sessionStorage.setItem('hr_a2shown', '1') } catch (e) {}
-      setTimeout(() => a2Sheet('아이폰은 홈 화면에 추가해야 업무 알림을 받을 수 있어요'), 1500);
+      setTimeout(() => a2Sheet('아이폰은 홈 화면에 추가한 아이콘으로 열어야 업무 알림을 받을 수 있어요'), 800);
     }
     return;
   }
-  await loadOS();
-  await osAttach();
-  if (granted() || !window.Notification || Notification.permission === 'denied') return;
+  if (!window.Notification) return;
+  if (Notification.permission === 'granted') { asked = true; await loadOS(); await osAttach(); return; }
+  if (Notification.permission === 'denied') { asked = true; if (FORCE_ASK) infoSheet(BLOCKED); return; }
   const later = get('hr_pushlater', 0);
-  if (later && Date.now() - later < 3 * 24 * 3600 * 1000) return;
-  const desc = role === 'worker' ? '휴가 승인·반려, 새 공지, 제증명 발급을 알려 드려요' : '휴가·가입·제증명 신청을 알려 드려요';
-  setTimeout(() => permSheet(desc), 1200);
+  if (!FORCE_ASK && later && Date.now() - later < 3 * 24 * 3600 * 1000) return;
+  asked = true;
+  await loadOS();
+  if (!OS) { infoSheet('알림 기능을 불러오지 못했어요. 인터넷 연결을 확인하고 앱을 다시 열어 주세요.'); return; }
+  const desc = role === 'worker' ? '휴가 승인·반려, 새 공지, 제증명 발급을 알려 드려요' : role ? '휴가·가입·제증명 신청을 알려 드려요' : '휴가·공지·제증명 소식을 알려 드려요';
+  setTimeout(() => permSheet(desc), 600);
+}
+const BLOCKED = IS_IOS ? '알림이 꺼져 있어요. 아이폰 설정 → 알림 → 누리이음 업무 → 알림 허용을 켜 주세요.'
+  : '알림이 차단돼 있어요. 홈 화면 아이콘을 길게 누르고 → 앱 정보 → 알림 → 허용으로 바꿔 주세요.';
+function infoSheet(msg) {
+  if ($('pmsheet')) return;
+  const bg = document.createElement('div'); bg.className = 'sheet-bg'; bg.id = 'pmsheet';
+  bg.innerHTML = `<div class="sheet" role="dialog" aria-label="업무 알림"><div class="sh-top"><img src="apple-touch-icon.png" alt=""><div><b>업무 알림</b></div></div>
+    <div class="sh-note">${msg}</div><div class="sh-btns" style="grid-template-columns:1fr"><button class="ok" id="pmOk">확인</button></div></div>`;
+  document.body.appendChild(bg);
+  $('pmOk').onclick = () => bg.remove();
 }
 async function pushLogout() {
   pid = ''; del('hr_pid');
