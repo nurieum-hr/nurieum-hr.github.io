@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>누리이음 업무시스템</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="누리이음 업무">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff">
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://n-script.googleusercontent.com">
+<style>
+html,body{touch-action:manipulation;-webkit-text-size-adjust:100%}
+button{touch-action:manipulation}
+:root{--navy:#00205B;--sky:#EAF0F8;--yellow:#FFE60D;--red:#FA002D;--ink:#1B1F27;--gray:#6A7280;--line:#E1E5EB;--bg:#F4F6F9}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#fff;overflow:hidden}
+body{font-family:'Noto Sans KR',-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:var(--ink);letter-spacing:-0.02em;padding-top:env(safe-area-inset-top)}
+#app{position:absolute;left:0;right:0;bottom:0;top:env(safe-area-inset-top);width:100%;height:calc(100% - env(safe-area-inset-top));border:0;display:block;background:#fff}
+#splash{position:fixed;inset:0;z-index:20;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;transition:opacity .3s}
+#splash.hide{opacity:0;pointer-events:none}
+#splash img{width:150px;height:150px;display:block}
+#splash .sp{width:28px;height:28px;border-radius:50%;border:3px solid var(--sky);border-top-color:var(--navy);animation:spin .8s linear infinite}
+#splash p{font-size:14px;color:var(--gray);font-weight:600;white-space:nowrap}
+#splash p.err{white-space:normal;color:var(--red);text-align:center;line-height:1.6;padding:0 24px}
+#splash button{height:46px;padding:0 22px;background:var(--navy);color:#fff;border:0;font-size:15px;font-weight:700;font-family:inherit}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){#splash .sp{animation-duration:2s}}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,32,91,.45);z-index:80;display:flex;align-items:center;justify-content:center;padding:20px 16px}
+.sheet{width:100%;max-width:420px;max-height:100%;overflow-y:auto;background:#fff;padding:22px 20px 18px;box-shadow:0 12px 40px rgba(0,32,91,.25);animation:up .2s ease-out}
+@keyframes up{from{transform:scale(.96);opacity:.4}to{transform:none;opacity:1}}
+.sh-top{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.sh-top img{width:52px;height:52px;border-radius:12px;box-shadow:0 1px 3px rgba(0,32,91,.12),0 3px 10px rgba(0,32,91,.08)}
+.sh-top b{display:block;font-size:18px;font-weight:800}
+.sh-top span{font-size:13px;color:var(--gray);word-break:keep-all}
+.sheet ol{list-style:none;border-top:2px solid var(--navy);margin-bottom:14px}
+.sheet li{display:flex;gap:12px;align-items:center;padding:13px 2px;border-bottom:1px solid var(--line);font-size:15px;word-break:keep-all}
+.sheet li em{flex:0 0 26px;height:26px;background:var(--navy);color:#fff;font-style:normal;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+.sheet li i{font-style:normal;display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:24px;padding:0 6px;background:#fff;box-shadow:0 1px 3px rgba(0,32,91,.14),0 2px 6px rgba(0,32,91,.08);font-size:13px;font-weight:700;color:var(--navy);margin:0 3px;vertical-align:middle}
+.sh-note{font-size:13px;color:var(--gray);background:var(--bg);padding:10px 12px;margin-bottom:14px;word-break:keep-all}
+.sh-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sh-btns button{height:50px;font-size:15px;font-weight:700;border:0;font-family:inherit}
+.sh-btns .ok{background:var(--navy);color:#fff;box-shadow:0 3px 8px rgba(0,32,91,.22)}
+.sh-btns .ok:disabled{opacity:.55}
+.sh-btns .off{color:var(--ink);background:#fff;box-shadow:0 1px 3px rgba(0,32,91,.10),0 3px 10px rgba(0,32,91,.06)}
+</style>
+</head>
+<body>
+<div id="splash"><img src="icon-512.png" alt="누리이음 업무시스템"><div class="sp" id="sp"></div><p id="spMsg">잠시만 기다려 주세요.</p></div>
+<iframe id="app" title="누리이음 업무시스템" allow="geolocation; camera; clipboard-write"></iframe>
+<script>
+/* ===== ① Apps Script 배포 주소 ===== */
+const EXEC_URL = 'https://script.google.com/macros/s/AKfycby_1RZ-LnN9wZTRzTPnqN0H8q96cgBXNZZywb8WFKTsxJKwDIQ8X8PzvEGAKjUyg4hRgA/exec';
+/* ===== ② OneSignal App ID (원시그널 → Settings → Keys & IDs) ===== */
+const OS_APP_ID = '여기에_원시그널_APP_ID';
+
+const BASE = location.pathname.replace(/[^/]*$/, '') || '/';
+const $ = id => document.getElementById(id);
+const UA = navigator.userAgent;
+const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_KAKAO = /KAKAOTALK/i.test(UA);
+const IS_INAPP = /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|everytimeApp|DaumApps/i.test(UA);
+const IS_STANDALONE = window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+const OS_READY = OS_APP_ID && OS_APP_ID.indexOf('여기에') < 0;
+
+function get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v) } catch (e) { return d } }
+function set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) {} }
+function del(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k) } catch (e) {} }
+
+/* ===== 업무시스템 띄우기 ===== */
+let shown = false;
+function hideSplash() { if (shown) return; shown = true; $('splash').classList.add('hide'); setTimeout(() => $('splash').style.display = 'none', 350) }
+$('app').src = EXEC_URL;
+setTimeout(() => { if (!shown) $('spMsg').textContent = '거의 다 됐어요. 잠시만 기다려 주세요.' }, 7000);
+setTimeout(() => {
+  if (shown) return;
+  $('sp').remove(); $('spMsg').className = 'err'; $('spMsg').innerHTML = '연결이 느려요. 인터넷 연결을 확인해 주세요.';
+  const b = document.createElement('button'); b.textContent = '다시 열기'; b.onclick = () => location.reload(); $('splash').appendChild(b);
+}, 25000);
+
+/* ===== 자동로그인 토큰 보관 (업무시스템 a1.html과 약속된 신호) ===== */
+function tokGet() {
+  try { const s = sessionStorage.getItem('hr_tok'); if (s) return JSON.parse(s) } catch (e) {}
+  return get('hr_tok', null);
+}
+function tokSave(token, remember) {
+  del('hr_tok');
+  const v = JSON.stringify({ token, remember: !!remember, savedAt: Date.now() });
+  try { remember ? localStorage.setItem('hr_tok', v) : sessionStorage.setItem('hr_tok', v) } catch (e) {}
+}
+window.addEventListener('message', e => {
+  if (!/\.googleusercontent\.com$/.test(e.origin)) return;
+  const d = e.data || {};
+  switch (d.type) {
+    case 'EEUM_AUTH_GET': {
+      const t = tokGet();
+      try { e.source.postMessage({ type: 'EEUM_AUTH_STATE', token: (t && t.token) || '', remember: t ? t.remember !== false : false }, e.origin) } catch (er) {}
+      break;
+    }
+    case 'EEUM_AUTH_SAVE': if (d.token) tokSave(String(d.token), d.remember !== false); break;
+    case 'EEUM_AUTH_CLEAR': del('hr_tok'); pushLogout(); break;
+    case 'EEUM_AUTH_READY': hideSplash(); break;
+    case 'EEUM_PUSH_LOGIN': hideSplash(); pushLogin(String(d.pushId || ''), String(d.role || '')); break;
+  }
+});
+
+/* ===== 홈 화면에 추가 안내 ===== */
+let a2Prompt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); a2Prompt = e });
+function a2Sheet(why) {
+  if ($('a2sheet')) return;
+  if (a2Prompt) { a2Prompt.prompt(); a2Prompt.userChoice.then(() => { a2Prompt = null }); return }
+  if (IS_KAKAO) { location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.origin + BASE); return }
+  const kind = IS_INAPP ? 'inapp' : IS_IOS ? 'ios' : 'android';
+  const steps = {
+    ios: ['오른쪽 아래 <i>⋯</i> 를 누르세요', '<i>공유 ↑</i> 를 누르세요', '<i>홈 화면에 추가</i> 를 누르세요', '오른쪽 위 <i>추가</i> 를 누르세요'],
+    android: ['오른쪽 위 <i>⋮</i> 를 누르세요', '<i>홈 화면에 추가</i> 를 누르세요', '<i>추가</i> 또는 <i>설치</i> 를 누르세요'],
+    inapp: ['오른쪽 위(또는 아래) <i>⋯</i> 를 누르세요', '<i>다른 브라우저로 열기</i> 를 누르세요', '열린 화면에서 다시 로그인하세요']
+  }[kind];
+  const bg = document.createElement('div'); bg.className = 'sheet-bg'; bg.id = 'a2sheet';
+  bg.onclick = e => { if (e.target === bg) bg.remove() };
+  bg.innerHTML = `<div class="sheet" role="dialog" aria-label="홈 화면에 추가 방법">
+    <div class="sh-top"><img src="apple-touch-icon.png" alt=""><div><b>홈 화면에 앱 추가</b><span>${why || ''}</span></div></div>
+    <ol>${steps.map((s, i) => `<li><em>${i + 1}</em><span>${s}</span></li>`).join('')}</ol>
+    <div class="sh-btns"><button class="off" id="a2off">다시 보지 않기</button><button class="ok" id="a2ok">확인</button></div></div>`;
+  document.body.appendChild(bg);
+  $('a2off').onclick = () => { set('hr_a2off', 1); bg.remove() };
+  $('a2ok').onclick = () => bg.remove();
+}
+
+/* ===== 휴대폰 알림 (OneSignal) ===== */
+let OS = null, osP = null, pid = get('hr_pid', '');
+function loadOS() {
+  if (!OS_READY) return Promise.resolve();
+  if (osP) return osP;
+  osP = new Promise(res => {
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function (OneSignal) {
+      try {
+        await OneSignal.init({
+          appId: OS_APP_ID,
+          serviceWorkerPath: BASE.slice(1) + 'OneSignalSDKWorker.js',
+          serviceWorkerParam: { scope: BASE },
+          notifyButton: { enable: false },
+          promptOptions: { slidedown: { prompts: [{ type: 'push', autoPrompt: false, text: { actionMessage: '업무 알림을 받으려면 허용을 눌러 주세요.', acceptButton: '허용', cancelButton: '나중에' } }] } }
+        });
+        OS = OneSignal;
+      } catch (e) { console.warn('OneSignal', e) }
+      res();
+    });
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js'; sc.defer = true;
+    sc.onerror = () => res();
+    document.head.appendChild(sc);
+    setTimeout(res, 10000);
+  });
+  return osP;
+}
+const granted = () => !!(window.Notification && Notification.permission === 'granted');
+async function osAttach() {
+  if (!OS || !pid) return;
+  try { if (OS.User.externalId !== pid) await OS.login(pid) } catch (e) {}
+  try {
+    if (granted() && !OS.User.PushSubscription.optedIn) await OS.User.PushSubscription.optIn();
+  } catch (e) {}
+}
+/* 로그인한 사람으로 알림 등록. 아직 허용 전이면 안내창(허용 버튼)을 한 번 보여 줌 */
+async function pushLogin(id, role) {
+  if (!id || !OS_READY) return;
+  pid = id; set('hr_pid', id);
+  if (IS_IOS && !IS_STANDALONE) {
+    if (!get('hr_a2off', 0) && !sessionStorage.getItem('hr_a2shown')) {
+      try { sessionStorage.setItem('hr_a2shown', '1') } catch (e) {}
+      setTimeout(() => a2Sheet('아이폰은 홈 화면에 추가해야 업무 알림을 받을 수 있어요'), 1500);
+    }
+    return;
+  }
+  await loadOS();
+  await osAttach();
+  if (granted() || !window.Notification || Notification.permission === 'denied') return;
+  const later = get('hr_pushlater', 0);
+  if (later && Date.now() - later < 3 * 24 * 3600 * 1000) return;
+  const desc = role === 'worker' ? '휴가 승인·반려, 새 공지, 제증명 발급을 알려 드려요' : '휴가·가입·제증명 신청을 알려 드려요';
+  setTimeout(() => permSheet(desc), 1200);
+}
+async function pushLogout() {
+  pid = ''; del('hr_pid');
+  if (!OS_READY || !osP) return;
+  await loadOS();
+  try { if (OS) await OS.logout() } catch (e) {}
+}
+/* 허용 요청은 '손가락으로 누른 바로 그 순간'에 해야 휴대폰이 받아 줌 → 이 페이지의 버튼에서 바로 요청 */
+function permSheet(desc) {
+  if ($('pmsheet') || !OS) return;
+  const bg = document.createElement('div'); bg.className = 'sheet-bg'; bg.id = 'pmsheet';
+  bg.innerHTML = `<div class="sheet" role="dialog" aria-label="업무 알림 받기">
+    <div class="sh-top"><img src="apple-touch-icon.png" alt=""><div><b>업무 알림 받기</b><span>${desc}</span></div></div>
+    <div class="sh-note">다음 화면에서 <b>허용</b>을 누르세요.</div>
+    <div class="sh-btns"><button class="off" id="pmNo">나중에</button><button class="ok" id="pmOk">알림 허용하기</button></div></div>`;
+  document.body.appendChild(bg);
+  const close = () => bg.remove();
+  $('pmNo').onclick = () => { set('hr_pushlater', Date.now()); close() };
+  bg.onclick = e => { if (e.target === bg) { set('hr_pushlater', Date.now()); close() } };
+  $('pmOk').onclick = () => {
+    $('pmOk').disabled = true; $('pmOk').textContent = '확인 중…';
+    let p;
+    try { p = OS.Notifications.requestPermission() } catch (e) { p = Promise.resolve() }
+    Promise.resolve(p).then(async () => {
+      close();
+      if (!granted()) { set('hr_pushlater', Date.now()); return }
+      for (let i = 0; i < 20 && !OS.User.PushSubscription.optedIn; i++) {
+        if (i === 3) { try { await OS.User.PushSubscription.optIn() } catch (e) {} }
+        await new Promise(r => setTimeout(r, 300));
+      }
+      await osAttach();
+    }).catch(close);
+  };
+}
+/* 이미 허용한 폰은 열 때마다 조용히 연결 확인 */
+if (OS_READY && pid && granted() && !(IS_IOS && !IS_STANDALONE)) setTimeout(() => loadOS().then(osAttach), 4000);
+</script>
+</body>
+</html>
