@@ -1,6 +1,6 @@
 {
-  "name": "누리이음 업무시스템",
-  "short_name": "누리이음 업무",
+  "name": "누리이음",
+  "short_name": "누리이음",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

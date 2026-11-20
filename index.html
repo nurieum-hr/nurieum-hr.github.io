@@ -2,14 +2,14 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<title>누리이음 업무시스템</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>누리이음</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="누리이음 업무">
+<meta name="apple-mobile-web-app-title" content="누리이음">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff">
 <link rel="preconnect" href="https://script.google.com">
@@ -76,6 +76,7 @@ function del(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k)
 let shown = false;
 function hideSplash() { if (shown) return; shown = true; $('splash').classList.add('hide'); setTimeout(() => $('splash').style.display = 'none', 350) }
 $('app').src = EXEC_URL;
+$('app').addEventListener('load', () => setTimeout(hideSplash, 1500));
 setTimeout(() => { if (!shown) $('spMsg').textContent = '거의 다 됐어요. 잠시만 기다려 주세요.' }, 7000);
 setTimeout(() => {
   if (shown) return;
@@ -104,8 +105,23 @@ window.addEventListener('message', e => {
     }
     case 'EEUM_AUTH_SAVE': if (d.token) tokSave(String(d.token), d.remember !== false); break;
     case 'EEUM_AUTH_CLEAR': del('hr_tok'); pushLogout(); break;
+    case 'EEUM_APP_SHOWN': hideSplash(); break;
     case 'EEUM_AUTH_READY': hideSplash(); if (d.authenticated) setTimeout(() => askPush(''), 2500); break;
     case 'EEUM_PUSH_LOGIN': hideSplash(); pushLogin(String(d.pushId || ''), String(d.role || '')); break;
+    /* 출퇴근 위치: 앱(아이프레임) 안에서는 위치 권한이 막히는 경우가 있어 런처가 대신 위치를 읽어 줌 */
+    case 'EEUM_GEO_PING':
+      try { e.source.postMessage({ type: 'EEUM_GEO_PONG', requestId: d.requestId }, e.origin) } catch (er) {}
+      break;
+    case 'EEUM_GEO_GET': {
+      const src = e.source, org = e.origin, rid = d.requestId;
+      const reply = m => { try { src.postMessage(Object.assign({ type: 'EEUM_GEO_RESULT', requestId: rid }, m), org) } catch (er) {} };
+      if (!navigator.geolocation) { reply({ ok: false, error: { code: 0, message: '이 기기에서는 위치 정보를 사용할 수 없어요.' } }); break }
+      navigator.geolocation.getCurrentPosition(
+        p => reply({ ok: true, coords: { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy || 0, capturedAt: Date.now() } }),
+        er => reply({ ok: false, error: { code: er && er.code || 0, message: String(er && er.message || '현재 위치를 확인하지 못했어요.') } }),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+      break;
+    }
   }
 });
 
@@ -200,7 +216,7 @@ async function askPush(role) {
   const desc = role === 'worker' ? '휴가 승인·반려, 새 공지, 제증명 발급을 알려 드려요' : role ? '휴가·가입·제증명 신청을 알려 드려요' : '휴가·공지·제증명 소식을 알려 드려요';
   setTimeout(() => permSheet(desc), 600);
 }
-const BLOCKED = IS_IOS ? '알림이 꺼져 있어요. 아이폰 설정 → 알림 → 누리이음 업무 → 알림 허용을 켜 주세요.'
+const BLOCKED = IS_IOS ? '알림이 꺼져 있어요. 아이폰 설정 → 알림 → 누리이음 → 알림 허용을 켜 주세요.'
   : '알림이 차단돼 있어요. 홈 화면 아이콘을 길게 누르고 → 앱 정보 → 알림 → 허용으로 바꿔 주세요.';
 function infoSheet(msg) {
   if ($('pmsheet')) return;
