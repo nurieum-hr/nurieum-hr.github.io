@@ -52,7 +52,7 @@ body{font-family:'Noto Sans KR',-apple-system,'Apple SD Gothic Neo','Malgun Goth
 </head>
 <body>
 <div id="splash"><img src="icon-512.png" alt="누리이음 업무시스템"><div class="sp" id="sp"></div><p id="spMsg">잠시만 기다려 주세요.</p></div>
-<iframe id="app" title="누리이음 업무시스템" allow="geolocation; camera; clipboard-write"></iframe>
+<iframe id="app" title="누리이음 업무시스템" allow="camera; clipboard-write"></iframe>
 <script>
 /* ===== ① Apps Script 배포 주소 ===== */
 const EXEC_URL = 'https://script.google.com/macros/s/AKfycby_1RZ-LnN9wZTRzTPnqN0H8q96cgBXNZZywb8WFKTsxJKwDIQ8X8PzvEGAKjUyg4hRgA/exec';
@@ -76,7 +76,10 @@ function del(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k)
 let shown = false;
 function hideSplash() { if (shown) return; shown = true; $('splash').classList.add('hide'); setTimeout(() => $('splash').style.display = 'none', 350) }
 $('app').src = EXEC_URL;
-$('app').addEventListener('load', () => setTimeout(hideSplash, 1500));
+/* 자동로그인 정보가 있으면 로그인 화면을 거치지 않도록, 업무시스템이 로그인을 마칠 때까지 시작 화면을 유지합니다. */
+const HAS_TOK = (() => { try { return !!(tokGet() || {}).token } catch (e) { return false } })();
+if (HAS_TOK) $('spMsg').textContent = '자동 로그인 중이에요.';
+$('app').addEventListener('load', () => setTimeout(hideSplash, HAS_TOK ? 9000 : 1500));
 setTimeout(() => { if (!shown) $('spMsg').textContent = '거의 다 됐어요. 잠시만 기다려 주세요.' }, 7000);
 setTimeout(() => {
   if (shown) return;
@@ -105,23 +108,9 @@ window.addEventListener('message', e => {
     }
     case 'EEUM_AUTH_SAVE': if (d.token) tokSave(String(d.token), d.remember !== false); break;
     case 'EEUM_AUTH_CLEAR': del('hr_tok'); pushLogout(); break;
-    case 'EEUM_APP_SHOWN': hideSplash(); break;
+    case 'EEUM_APP_SHOWN': if (!HAS_TOK) hideSplash(); break;
     case 'EEUM_AUTH_READY': hideSplash(); if (d.authenticated) setTimeout(() => askPush(''), 2500); break;
     case 'EEUM_PUSH_LOGIN': hideSplash(); pushLogin(String(d.pushId || ''), String(d.role || '')); break;
-    /* 출퇴근 위치: 앱(아이프레임) 안에서는 위치 권한이 막히는 경우가 있어 런처가 대신 위치를 읽어 줌 */
-    case 'EEUM_GEO_PING':
-      try { e.source.postMessage({ type: 'EEUM_GEO_PONG', requestId: d.requestId }, e.origin) } catch (er) {}
-      break;
-    case 'EEUM_GEO_GET': {
-      const src = e.source, org = e.origin, rid = d.requestId;
-      const reply = m => { try { src.postMessage(Object.assign({ type: 'EEUM_GEO_RESULT', requestId: rid }, m), org) } catch (er) {} };
-      if (!navigator.geolocation) { reply({ ok: false, error: { code: 0, message: '이 기기에서는 위치 정보를 사용할 수 없어요.' } }); break }
-      navigator.geolocation.getCurrentPosition(
-        p => reply({ ok: true, coords: { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy || 0, capturedAt: Date.now() } }),
-        er => reply({ ok: false, error: { code: er && er.code || 0, message: String(er && er.message || '현재 위치를 확인하지 못했어요.') } }),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-      break;
-    }
   }
 });
 
@@ -166,24 +155,31 @@ function loadOS() {
           promptOptions: { slidedown: { prompts: [{ type: 'push', autoPrompt: false, text: { actionMessage: '업무 알림을 받으려면 허용을 눌러 주세요.', acceptButton: '허용', cancelButton: '나중에' } }] } }
         });
         OS = OneSignal;
-      } catch (e) { console.warn('OneSignal', e) }
+      } catch (e) { osP = null; console.warn('알림 초기화 실패'); }
       res();
     });
     const sc = document.createElement('script');
     sc.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js'; sc.defer = true;
-    sc.onerror = () => res();
+    sc.onerror = () => { osP = null; sc.remove(); res(); };
     document.head.appendChild(sc);
     setTimeout(res, 10000);
   });
   return osP;
 }
 const granted = () => !!(window.Notification && Notification.permission === 'granted');
-async function osAttach() {
-  if (!OS || !pid) return;
-  try { if (OS.User.externalId !== pid) await OS.login(pid) } catch (e) {}
-  try {
-    if (granted() && !OS.User.PushSubscription.optedIn) await OS.User.PushSubscription.optIn();
-  } catch (e) {}
+let pushQueue = Promise.resolve();
+function osAttach() {
+  const account = pid;
+  pushQueue = pushQueue.then(async () => {
+    if (!OS || !account || pid !== account) return;
+    if (OS.User.externalId !== account) await OS.login(account);
+    if (pid === account && granted() && !OS.User.PushSubscription.optedIn) {
+      await OS.User.PushSubscription.optIn();
+    }
+  }).catch(() => {
+    if (pid === account) infoSheet('업무 알림 연결을 완료하지 못했습니다. 인터넷 연결을 확인한 뒤 앱을 다시 열어 주세요.');
+  });
+  return pushQueue;
 }
 /* 로그인한 사람으로 알림 등록 */
 async function pushLogin(id, role) {
@@ -206,13 +202,13 @@ async function askPush(role) {
     return;
   }
   if (!window.Notification) return;
-  if (Notification.permission === 'granted') { asked = true; await loadOS(); await osAttach(); return; }
+  if (Notification.permission === 'granted') { asked = true; return; }
   if (Notification.permission === 'denied') { asked = true; if (FORCE_ASK) infoSheet(BLOCKED); return; }
   const later = get('hr_pushlater', 0);
   if (!FORCE_ASK && later && Date.now() - later < 3 * 24 * 3600 * 1000) return;
   asked = true;
   await loadOS();
-  if (!OS) { infoSheet('알림 기능을 불러오지 못했어요. 인터넷 연결을 확인하고 앱을 다시 열어 주세요.'); return; }
+  if (!OS) { asked = false; infoSheet('알림 기능을 불러오지 못했어요. 인터넷 연결을 확인하고 앱을 다시 열어 주세요.'); return; }
   const desc = role === 'worker' ? '휴가 승인·반려, 새 공지, 제증명 발급을 알려 드려요' : role ? '휴가·가입·제증명 신청을 알려 드려요' : '휴가·공지·제증명 소식을 알려 드려요';
   setTimeout(() => permSheet(desc), 600);
 }
@@ -230,7 +226,8 @@ async function pushLogout() {
   pid = ''; del('hr_pid');
   if (!OS_READY || !osP) return;
   await loadOS();
-  try { if (OS) await OS.logout() } catch (e) {}
+  pushQueue = pushQueue.then(async () => { if (OS && !pid) await OS.logout(); }).catch(() => console.warn('알림 로그아웃 실패'));
+  await pushQueue;
 }
 /* 허용 요청은 '손가락으로 누른 바로 그 순간'에 해야 휴대폰이 받아 줌 → 이 페이지의 버튼에서 바로 요청 */
 function permSheet(desc) {
@@ -260,7 +257,7 @@ function permSheet(desc) {
   };
 }
 /* 이미 허용한 폰은 열 때마다 조용히 연결 확인 */
-if (OS_READY && pid && granted() && !(IS_IOS && !IS_STANDALONE)) setTimeout(() => loadOS().then(osAttach), 4000);
+
 </script>
 </body>
 </html>
