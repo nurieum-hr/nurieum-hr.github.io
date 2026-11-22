@@ -152,6 +152,8 @@ function loadOS() {
           serviceWorkerPath: BASE.slice(1) + 'OneSignalSDKWorker.js',
           serviceWorkerParam: { scope: BASE },
           notifyButton: { enable: false },
+          /* 알림을 처음 허용했을 때 오는 환영 알림 문구(기본값 'Thanks for subscribing!' 대신) */
+          welcomeNotification: { disable: false, title: '누리이음', message: '알림설정이 완료되었습니다!' },
           promptOptions: { slidedown: { prompts: [{ type: 'push', autoPrompt: false, text: { actionMessage: '업무 알림을 받으려면 허용을 눌러 주세요.', acceptButton: '허용', cancelButton: '나중에' } }] } }
         });
         OS = OneSignal;
